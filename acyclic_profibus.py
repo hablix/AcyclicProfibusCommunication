@@ -6,7 +6,11 @@ port = 12345
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
 
 class PB_device():
-    pass
+    def __init__(self):
+        self.physical_blocks = None
+        self.transducer_blocks = None
+        self.function_blocks = None
+        self.link_objects = None
 
 
 def main():    
@@ -47,47 +51,48 @@ def get_device_information(addr):
     dir_entries_list = sendMessage(framemarker+1, addr, slot, index+1)
     num_comp = int.from_bytes(pbd.num_comp_list_dir_entry, 'big')
 
-    pbd.directory = []
 
     if num_comp >= 1:
-        pbd.directory.append({
+        pbd.physical_blocks = {
             "type": "Physical Block",
             "index": dir_entries_list[1],
             "offset": dir_entries_list[2],
             "number": dir_entries_list[3:5]
-        })
+        }
     
     if num_comp >= 2:
-        pbd.directory.append({
+        pbd.transducer_blocks = {
             "type": "Transducer Block",
             "index": dir_entries_list[5],
             "offset": dir_entries_list[6],
             "number": dir_entries_list[7:9]
-        })
+        }
     
     if num_comp >= 3:
-        pbd.directory.append({
+        pbd.function_blocks = {
             "type": "Function Block",
             "index": dir_entries_list[9],
             "offset": dir_entries_list[10],
             "number": dir_entries_list[11:13]
-        })
+        }
     
     if num_comp >= 4:
-        pbd.directory.append({
+        pbd.link_objects = {
             "type": "Link Object",
             "index": dir_entries_list[13],
             "offset": dir_entries_list[14],
             "number": dir_entries_list[15:17]
-        })
+        }
     
     # Get Composite_Directory_Entries
     blocks_index = dir_entries_list[1]
     dir_blocks = sendMessage(framemarker+2, addr, slot, blocks_index)
+    
     # TODO: Auslesen der einzelnen Blöcke. PB -> Hersteller, FB -> Funktion und Wert, TB -> Einheit
     
-    print(pbd.directory)
     print(f"From bus address {addr} recieved Composite_Directory_Entries: {dir_blocks}")
+    
+
     
     return pbd
 
