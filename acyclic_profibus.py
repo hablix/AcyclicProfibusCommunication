@@ -57,7 +57,8 @@ def get_device_information(addr):
             "type": "Physical Block",
             "index": dir_entries_list[1],
             "offset": dir_entries_list[2],
-            "number": dir_entries_list[3:5]
+            "number": dir_entries_list[3:5],
+            "blocks": []
         }
     
     if num_comp >= 2:
@@ -65,7 +66,8 @@ def get_device_information(addr):
             "type": "Transducer Block",
             "index": dir_entries_list[5],
             "offset": dir_entries_list[6],
-            "number": dir_entries_list[7:9]
+            "number": dir_entries_list[7:9],
+            "blocks": []
         }
     
     if num_comp >= 3:
@@ -73,7 +75,8 @@ def get_device_information(addr):
             "type": "Function Block",
             "index": dir_entries_list[9],
             "offset": dir_entries_list[10],
-            "number": dir_entries_list[11:13]
+            "number": dir_entries_list[11:13],
+            "blocks": []
         }
     
     if num_comp >= 4:
@@ -81,19 +84,33 @@ def get_device_information(addr):
             "type": "Link Object",
             "index": dir_entries_list[13],
             "offset": dir_entries_list[14],
-            "number": dir_entries_list[15:17]
+            "number": dir_entries_list[15:17],
+            "blocks": []
         }
     
     # Get Composite_Directory_Entries
     blocks_index = dir_entries_list[1]
     dir_blocks = sendMessage(framemarker+2, addr, slot, blocks_index)
+    dir_blocks = [dir_blocks[i:i+4] for i in range(1, len(dir_blocks), 4)]
+    relativ_index = pbd.physical_blocks["offset"]
+    
+    for block in dir_blocks:
+        info = {
+            "slot": block[0],
+            "index": block[1],
+            "num_para": block[2:4]
+        }
+        if relativ_index < pbd.transducer_blocks["offset"]:
+            pbd.physical_blocks["blocks"].append(info)
+        elif relativ_index < pbd.function_blocks["offset"]:
+            pbd.transducer_blocks["blocks"].append(info)
+        else:
+            pbd.function_blocks["blocks"].append(info)
+        relativ_index += 1
     
     # TODO: Auslesen der einzelnen Blöcke. PB -> Hersteller, FB -> Funktion und Wert, TB -> Einheit
-    
     print(f"From bus address {addr} recieved Composite_Directory_Entries: {dir_blocks}")
-    
-
-    
+    print(pbd.function_blocks["blocks"])
     return pbd
 
 def sendMessage(framemarker, addr, slot, index):
