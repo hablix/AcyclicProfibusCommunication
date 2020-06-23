@@ -1,4 +1,6 @@
 import socket
+import struct
+#from lxml import etree as ET
 
 # Server
 ip = "141.76.82.170"
@@ -108,9 +110,18 @@ def get_device_information(addr):
             pbd.function_blocks["blocks"].append(info)
         relativ_index += 1
     
+    # Read physical block information
+    for phyBlock in pbd.physical_blocks["blocks"]:
+        phyBlock["man_id"] = getManufacuter(phyBlock, addr)
+
+    for tdBlock in pbd.transducer_blocks["blocks"]:
+        getTranducerBlockInfo(tdBlock, addr)
+    
+    for fb in pbd.function_blocks["blocks"]:
+        fb["parent_class"], fb["class"], fb["value"], fb["status"] = getFunctionBlockInfo(fb, addr)
+
+    
     # TODO: Auslesen der einzelnen Blöcke. PB -> Hersteller, FB -> Funktion und Wert, TB -> Einheit
-    print(f"From bus address {addr} recieved Composite_Directory_Entries: {dir_blocks}")
-    print(pbd.function_blocks["blocks"])
     return pbd
 
 def sendMessage(framemarker, addr, slot, index):
@@ -122,6 +133,52 @@ def sendMessage(framemarker, addr, slot, index):
     s.sendto(msg, (ip, port))
     data, _ = s.recvfrom(1024) 
     return data
+
+def getManufacuter(phyBlock, addr):
+    # Get Man_ID from physical Block and look up corresponding manufacturer name
+    # Relative Index for Man_ID = 110
+    device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 110)
+    device_man_id = int.from_bytes(device_man_id[1:], 'big')
+    return device_man_id
+    #tree = ET.parse("Man_ID_Table.xml")
+    #root = tree.getroot()
+    #print(root.xpath(".//Manufacturer[@ID='26']"))
+        
+
+def getTranducerBlockInfo(tdBlock, addr):
+    slot = tdBlock["slot"]
+    index = tdBlock["index"]
+    blockinfo = sendMessage(1, addr, slot, index)
+    print(f"Found transducer block at Slot {slot} Index {index}: {blockinfo}")
+
+def getFunctionBlockInfo(fBlock, addr):
+    slot = fBlock["slot"]
+    index = fBlock["index"]
+    fbinfo = sendMessage(1, addr, slot, index)
+    if(len(fbinfo)>= 5):
+        parentClass = fbinfo[3]
+        _class = fbinfo[4]
+        if parentClass == 1 and _class == 1:
+            # Analog Input Function Block
+            print(f"Found function block at Slot {slot} Index {index}: Input, Analog Input")
+            # Parameter Attributes for the Analog Input Function Block S157: OUT=10
+            fb_output = sendMessage(2, addr, slot, index+10)
+
+            try:
+                value = struct.unpack('>f', fb_output[1:5])[0]
+                status = fb_output[5]
+                print(f"With output value = {value} status = {status}")
+            except:
+                value = None
+                status = None
+
+            return "Input", "Analog Input", value, status
+        else:
+            print(f"Found function block at Slot {slot} Index {index}: Parent Class: {parentClass}, Class: {_class}")
+            return parentClass, _class, None, None
+    else:
+        print(f"Could not find function block at slot {slot} index {index}")
+        return None, None, None, None
 
 
 if __name__ == "__main__":
