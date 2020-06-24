@@ -20,7 +20,9 @@ def main():
 
     devices = []
     for addr in valid_addresses:
+        print(f"Device at address {addr}:")
         devices.append(get_device_information(addr))
+        print("----------------------------------------------")
 
 
 def find_valid_addrs():
@@ -92,8 +94,12 @@ def get_device_information(addr):
     
     # Get Composite_Directory_Entries
     blocks_index = dir_entries_list[1]
-    dir_blocks = sendMessage(framemarker+2, addr, slot, blocks_index)
+    if int.from_bytes(pbd.num_dir_obj, 'big') == 1:
+        dir_blocks =  dir_entries_list[num_comp*4:]
+    else:
+        dir_blocks = sendMessage(framemarker+2, addr, slot, blocks_index)
     dir_blocks = [dir_blocks[i:i+4] for i in range(1, len(dir_blocks), 4)]
+    
     relativ_index = pbd.physical_blocks["offset"]
     
     for block in dir_blocks:
@@ -112,16 +118,18 @@ def get_device_information(addr):
     
     # Read physical block information
     for phyBlock in pbd.physical_blocks["blocks"]:
-        phyBlock["man_id"] = getManufacuter(phyBlock, addr)
+        phyBlock["parent_class"], phyBlock["man_id"] = getManufacuter(phyBlock, addr)
+        print(f"Man ID = {phyBlock['man_id']} Parent Class = {phyBlock['parent_class']}")
 
+    # Read transducer block information
     for tdBlock in pbd.transducer_blocks["blocks"]:
-        getTranducerBlockInfo(tdBlock, addr)
+        tdBlock["parent_class"], tdBlock["class"], tdBlock["unit"] = getTranducerBlockInfo(tdBlock, addr)
+        print(f"    Unit = {tdBlock['unit']}")
     
+    # Read function block information
     for fb in pbd.function_blocks["blocks"]:
         fb["parent_class"], fb["class"], fb["value"], fb["status"] = getFunctionBlockInfo(fb, addr)
-
     
-    # TODO: Auslesen der einzelnen Blöcke. PB -> Hersteller, FB -> Funktion und Wert, TB -> Einheit
     return pbd
 
 def sendMessage(framemarker, addr, slot, index):
@@ -136,28 +144,62 @@ def sendMessage(framemarker, addr, slot, index):
 
 def getManufacuter(phyBlock, addr):
     # Get Man_ID from physical Block and look up corresponding manufacturer name
-    # Relative Index for Man_ID = 110
-    device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 110)
+    # Relative Index for Man_ID = 10 / 110 for device 7
+    if addr == 7:
+        block_object = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 100)
+        device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 110)
+    else:
+        block_object = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"])
+        device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 10)
     device_man_id = int.from_bytes(device_man_id[1:], 'big')
-    return device_man_id
+    parent_class = block_object[3]
+
+    # TODO: Find ID in Man_ID_Table.xml
     #tree = ET.parse("Man_ID_Table.xml")
     #root = tree.getroot()
     #print(root.xpath(".//Manufacturer[@ID='26']"))
+    return parent_class, device_man_id
         
 
 def getTranducerBlockInfo(tdBlock, addr):
+    # Read primary value unit
     slot = tdBlock["slot"]
     index = tdBlock["index"]
-    blockinfo = sendMessage(1, addr, slot, index)
-    print(f"Found transducer block at Slot {slot} Index {index}: {blockinfo}")
+    block_object = sendMessage(1, addr, slot, index)
+
+    parent_class = block_object[3]
+    _class = block_object[4]
+
+    if addr == 7:
+        # Hard coded for addr 7 due to defect directory
+        _unit = sendMessage(1, addr, 4, 9)[1:]
+        _unit = int.from_bytes(_unit, 'big')
+        unit = "degree Celsius" if _unit == 1001 else str(_unit)
+    elif parent_class == 1:
+        # Preassure TB
+        _unit = sendMessage(2, addr, slot, index+14)[1:]
+        _unit = int.from_bytes(_unit, 'big')
+        unit = "mbar" if _unit == 1138 else str(_unit)
+        parent_class = "Preassure"
+    elif parent_class == 2:
+        # Temperature TB
+        _unit = sendMessage(2, addr, slot, index+9)[1:]
+        _unit = int.from_bytes(_unit, 'big')
+        unit = "degree Celsius" if _unit == 1001 else str(_unit)
+        parent_class = "Temperature"
+    else:
+        # All other TBs
+        unit = None
+    print(f"Found transducer block at Slot {slot} Index {index}: Parent Class: {parent_class}, Class: {_class}")
+    return parent_class, _class, unit
 
 def getFunctionBlockInfo(fBlock, addr):
     slot = fBlock["slot"]
     index = fBlock["index"]
-    fbinfo = sendMessage(1, addr, slot, index)
-    if(len(fbinfo)>= 5):
-        parentClass = fbinfo[3]
-        _class = fbinfo[4]
+    block_object = sendMessage(1, addr, slot, index)
+    if(len(block_object)>= 5):
+        parentClass = block_object[3]
+        _class = block_object[4]
         if parentClass == 1 and _class == 1:
             # Analog Input Function Block
             print(f"Found function block at Slot {slot} Index {index}: Input, Analog Input")
@@ -167,7 +209,7 @@ def getFunctionBlockInfo(fBlock, addr):
             try:
                 value = struct.unpack('>f', fb_output[1:5])[0]
                 status = fb_output[5]
-                print(f"With output value = {value} status = {status}")
+                print(f"    Output value = {value} status = {status}")
             except:
                 value = None
                 status = None
@@ -177,7 +219,7 @@ def getFunctionBlockInfo(fBlock, addr):
             print(f"Found function block at Slot {slot} Index {index}: Parent Class: {parentClass}, Class: {_class}")
             return parentClass, _class, None, None
     else:
-        print(f"Could not find function block at slot {slot} index {index}")
+        print(f"Could not find function block at slot {slot} index {index} but there should be one")
         return None, None, None, None
 
 
