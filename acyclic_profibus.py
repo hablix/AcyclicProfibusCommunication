@@ -1,11 +1,18 @@
 import socket
 import struct
+from consolemenu import *
+from consolemenu.items import *
+import re
+import time
 #from lxml import etree as ET
 
 # Server
 ip = "141.76.82.170"
 port = 12345
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+menuValidAdresses = []
+menuDevices = []
+
 
 class PB_device():
     def __init__(self):
@@ -15,7 +22,7 @@ class PB_device():
         self.link_objects = None
 
 
-def main():    
+def main():
     valid_addresses = find_valid_addrs()
 
     devices = []
@@ -27,9 +34,10 @@ def main():
 
 def find_valid_addrs():
     valid_addrs = []
-    for address in range(0,10):
+    for address in range(0, 10):
         data = sendMessage(1, address, 1, 0)
-        if len(data) > 1: valid_addrs.append(address)
+        if len(data) > 1:
+            valid_addrs.append(address)
     print(f"Devices found at bus address: {valid_addrs}")
     return valid_addrs
 
@@ -38,10 +46,9 @@ def get_device_information(addr):
     framemarker = 1
     slot = 1
     index = 0
-    
-    # Get DIRECTORY_OBJECT_HEADER
-    dir_obj_header = sendMessage(framemarker, addr, slot, index)    
 
+    # Get DIRECTORY_OBJECT_HEADER
+    dir_obj_header = sendMessage(framemarker, addr, slot, index)
     pbd = PB_device()
     pbd.dir_ID = dir_obj_header[1:3]
     pbd.rev_number = dir_obj_header[3:5]
@@ -49,12 +56,12 @@ def get_device_information(addr):
     pbd.num_dir_entry = dir_obj_header[7:9]
     pbd.first_comp_list_dir_entry = dir_obj_header[9:11]
     pbd.num_comp_list_dir_entry = dir_obj_header[11:13]
-    pbd.num_blocks = int.from_bytes(pbd.num_dir_entry, 'big') - int.from_bytes(pbd.num_comp_list_dir_entry, 'big')
-    
+    pbd.num_blocks = int.from_bytes(
+        pbd.num_dir_entry, 'big') - int.from_bytes(pbd.num_comp_list_dir_entry, 'big')
+
     # Get COMPOSITE_LIST_DIRECTORY_ENTRIES
     dir_entries_list = sendMessage(framemarker+1, addr, slot, index+1)
     num_comp = int.from_bytes(pbd.num_comp_list_dir_entry, 'big')
-
 
     if num_comp >= 1:
         pbd.physical_blocks = {
@@ -64,7 +71,7 @@ def get_device_information(addr):
             "number": dir_entries_list[3:5],
             "blocks": []
         }
-    
+
     if num_comp >= 2:
         pbd.transducer_blocks = {
             "type": "Transducer Block",
@@ -73,7 +80,7 @@ def get_device_information(addr):
             "number": dir_entries_list[7:9],
             "blocks": []
         }
-    
+
     if num_comp >= 3:
         pbd.function_blocks = {
             "type": "Function Block",
@@ -82,7 +89,7 @@ def get_device_information(addr):
             "number": dir_entries_list[11:13],
             "blocks": []
         }
-    
+
     if num_comp >= 4:
         pbd.link_objects = {
             "type": "Link Object",
@@ -91,17 +98,17 @@ def get_device_information(addr):
             "number": dir_entries_list[15:17],
             "blocks": []
         }
-    
+
     # Get Composite_Directory_Entries
     blocks_index = dir_entries_list[1]
     if int.from_bytes(pbd.num_dir_obj, 'big') == 1:
-        dir_blocks =  dir_entries_list[num_comp*4:]
+        dir_blocks = dir_entries_list[num_comp*4:]
     else:
         dir_blocks = sendMessage(framemarker+2, addr, slot, blocks_index)
     dir_blocks = [dir_blocks[i:i+4] for i in range(1, len(dir_blocks), 4)]
-    
+
     relativ_index = pbd.physical_blocks["offset"]
-    
+
     for block in dir_blocks:
         info = {
             "slot": block[0],
@@ -115,51 +122,63 @@ def get_device_information(addr):
         else:
             pbd.function_blocks["blocks"].append(info)
         relativ_index += 1
-    
+
     # Read physical block information
     for phyBlock in pbd.physical_blocks["blocks"]:
-        phyBlock["parent_class"], phyBlock["man_id"] = getManufacuter(phyBlock, addr)
-        print(f"Man ID = {phyBlock['man_id']} Parent Class = {phyBlock['parent_class']}")
+        phyBlock["parent_class"], phyBlock["man_id"] = getManufacuter(
+            phyBlock, addr)
+        print(
+            f"Man ID = {phyBlock['man_id']} Parent Class = {phyBlock['parent_class']}")
 
     # Read transducer block information
     for tdBlock in pbd.transducer_blocks["blocks"]:
-        tdBlock["parent_class"], tdBlock["class"], tdBlock["unit"] = getTranducerBlockInfo(tdBlock, addr)
+        tdBlock["parent_class"], tdBlock["class"], tdBlock["unit"] = getTranducerBlockInfo(
+            tdBlock, addr)
         print(f"    Unit = {tdBlock['unit']}")
-    
+
     # Read function block information
     for fb in pbd.function_blocks["blocks"]:
-        fb["parent_class"], fb["class"], fb["value"], fb["status"] = getFunctionBlockInfo(fb, addr)
-    
+        fb["parent_class"], fb["class"], fb["value"], fb["status"] = getFunctionBlockInfo(
+            fb, addr)
+
     return pbd
 
+
 def sendMessage(framemarker, addr, slot, index):
+    global ip
+    global port
     framemarker = framemarker.to_bytes(1, 'big')
-    addr = addr.to_bytes(1, 'big')          
-    slot = slot.to_bytes(1, 'big')    
+    addr = addr.to_bytes(1, 'big')
+    slot = slot.to_bytes(1, 'big')
     index = index.to_bytes(1, 'big')
     msg = framemarker + addr + slot + index
     s.sendto(msg, (ip, port))
-    data, _ = s.recvfrom(1024) 
+    data, _ = s.recvfrom(1024)
     return data
+
 
 def getManufacuter(phyBlock, addr):
     # Get Man_ID from physical Block and look up corresponding manufacturer name
     # Relative Index for Man_ID = 10 / 110 for device 7
     if addr == 7:
-        block_object = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 100)
-        device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 110)
+        block_object = sendMessage(
+            1, addr, phyBlock["slot"], phyBlock["index"] + 100)
+        device_man_id = sendMessage(
+            1, addr, phyBlock["slot"], phyBlock["index"] + 110)
     else:
-        block_object = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"])
-        device_man_id = sendMessage(1, addr, phyBlock["slot"], phyBlock["index"] + 10)
+        block_object = sendMessage(
+            1, addr, phyBlock["slot"], phyBlock["index"])
+        device_man_id = sendMessage(
+            1, addr, phyBlock["slot"], phyBlock["index"] + 10)
     device_man_id = int.from_bytes(device_man_id[1:], 'big')
     parent_class = block_object[3]
 
     # TODO: Find ID in Man_ID_Table.xml
     #tree = ET.parse("Man_ID_Table.xml")
     #root = tree.getroot()
-    #print(root.xpath(".//Manufacturer[@ID='26']"))
+    # print(root.xpath(".//Manufacturer[@ID='26']"))
     return parent_class, device_man_id
-        
+
 
 def getTranducerBlockInfo(tdBlock, addr):
     # Read primary value unit
@@ -190,19 +209,22 @@ def getTranducerBlockInfo(tdBlock, addr):
     else:
         # All other TBs
         unit = None
-    print(f"Found transducer block at Slot {slot} Index {index}: Parent Class: {parent_class}, Class: {_class}")
+    print(
+        f"Found transducer block at Slot {slot} Index {index}: Parent Class: {parent_class}, Class: {_class}")
     return parent_class, _class, unit
+
 
 def getFunctionBlockInfo(fBlock, addr):
     slot = fBlock["slot"]
     index = fBlock["index"]
     block_object = sendMessage(1, addr, slot, index)
-    if(len(block_object)>= 5):
+    if(len(block_object) >= 5):
         parentClass = block_object[3]
         _class = block_object[4]
         if parentClass == 1 and _class == 1:
             # Analog Input Function Block
-            print(f"Found function block at Slot {slot} Index {index}: Input, Analog Input")
+            print(
+                f"Found function block at Slot {slot} Index {index}: Input, Analog Input")
             # Parameter Attributes for the Analog Input Function Block S157: OUT=10
             fb_output = sendMessage(2, addr, slot, index+10)
 
@@ -216,12 +238,71 @@ def getFunctionBlockInfo(fBlock, addr):
 
             return "Input", "Analog Input", value, status
         else:
-            print(f"Found function block at Slot {slot} Index {index}: Parent Class: {parentClass}, Class: {_class}")
+            print(
+                f"Found function block at Slot {slot} Index {index}: Parent Class: {parentClass}, Class: {_class}")
             return parentClass, _class, None, None
     else:
-        print(f"Could not find function block at slot {slot} index {index} but there should be one")
+        print(
+            f"Could not find function block at slot {slot} index {index} but there should be one")
         return None, None, None, None
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
+
+def menuSetIPAdress():
+    re_ipv4 = re.compile(
+        '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
+    global ip
+    ip = input("IP Adresse ('141.76.82.170'): ")
+
+    if not re_ipv4.match(ip):
+        print('Dies entspricht keiner gültigen IP Adresse. Die Standardadresse wird übernommen.')
+        time.sleep(2)
+        ip = '141.76.82.170'
+
+    if not ip:
+        ip = '141.76.82.170'
+
+    print('Die gewählte IP lautet: {}'.format(ip))
+    time.sleep(2)
+
+
+def menuFindClients():
+    global menuValidAdresses
+    global menuDevices
+    menuValidAdresses = find_valid_addrs()
+    time.sleep(2)
+    for adress in menuValidAdresses:
+        print(adress)
+        device_function_item = FunctionItem(text="Lade Geräteinformationen von Adresse {}".format(
+            adress), function=menuGetDeviceInformation, args=[adress])
+        menu.append_item(device_function_item)
+
+
+def menuGetDeviceInformation(addr):
+    i = 0
+    while True:
+        try:
+            get_device_information(addr)
+            break
+        except TypeError:
+            i = i + 1
+            print("Verbindung fehlgeschlagen. Versuche es Erneut... {}".format(i))
+            if i > 5:
+                raise myError2
+
+
+menu = ConsoleMenu("Acyclic Profibus Communication V0.1",
+                   "von Jim und Felix             IP Adresse: {}".format(ip))
+function_item0 = FunctionItem(
+    "Automatischer Durchlauf", main)
+function_item1 = FunctionItem(
+    "Wähle die IP Adresse des Proxy", menuSetIPAdress)
+function_item2 = FunctionItem(
+    "Suche Endgeräte", menuFindClients)
+
+menu.append_item(function_item0)
+menu.append_item(function_item1)
+menu.append_item(function_item2)
+menu.show()
