@@ -4,7 +4,7 @@ from consolemenu import *
 from consolemenu.items import *
 import re
 import time
-#from lxml import etree as ET
+# from lxml import etree as ET
 
 # Server
 ip = "141.76.82.170"
@@ -50,6 +50,9 @@ def get_device_information(addr):
     # Get DIRECTORY_OBJECT_HEADER
     dir_obj_header = sendMessage(framemarker, addr, slot, index)
     pbd = PB_device()
+    pbd.addr = addr
+    pbd.values = []
+    pbd.units = []
     pbd.dir_ID = dir_obj_header[1:3]
     pbd.rev_number = dir_obj_header[3:5]
     pbd.num_dir_obj = dir_obj_header[5:7]
@@ -129,17 +132,21 @@ def get_device_information(addr):
             phyBlock, addr)
         print(
             f"Man ID = {phyBlock['man_id']} Parent Class = {phyBlock['parent_class']}")
+        pbd.manufacturerID = phyBlock['man_id']
 
     # Read transducer block information
     for tdBlock in pbd.transducer_blocks["blocks"]:
         tdBlock["parent_class"], tdBlock["class"], tdBlock["unit"] = getTranducerBlockInfo(
             tdBlock, addr)
         print(f"    Unit = {tdBlock['unit']}")
+        pbd.units.append(tdBlock["unit"])
 
     # Read function block information
     for fb in pbd.function_blocks["blocks"]:
         fb["parent_class"], fb["class"], fb["value"], fb["status"] = getFunctionBlockInfo(
             fb, addr)
+        if fb["value"]:
+            pbd.values.append(fb["value"])
 
     return pbd
 
@@ -174,8 +181,8 @@ def getManufacuter(phyBlock, addr):
     parent_class = block_object[3]
 
     # TODO: Find ID in Man_ID_Table.xml
-    #tree = ET.parse("Man_ID_Table.xml")
-    #root = tree.getroot()
+    # tree = ET.parse("Man_ID_Table.xml")
+    # root = tree.getroot()
     # print(root.xpath(".//Manufacturer[@ID='26']"))
     return parent_class, device_man_id
 
@@ -271,6 +278,7 @@ def menuSetIPAdress():
 def menuFindClients():
     global menuValidAdresses
     global menuDevices
+    print('Suche nach Endgeräten läuft...')
     menuValidAdresses = find_valid_addrs()
     time.sleep(2)
     for adress in menuValidAdresses:
@@ -284,13 +292,34 @@ def menuGetDeviceInformation(addr):
     i = 0
     while True:
         try:
-            get_device_information(addr)
+            menuDevices.append(get_device_information(addr))
             break
         except TypeError:
             i = i + 1
             print("Verbindung fehlgeschlagen. Versuche es Erneut... {}".format(i))
             if i > 5:
                 raise myError2
+
+
+def menuGetDeviceInformationOutput():
+    global menuDevices
+    if not menuDevices:
+        print('Keine Gerätedaten gefunden.')
+        input("Drücke eine Taste um fortzufahren...")
+        return
+
+    for pbd in menuDevices:
+        print('Geräteinformationen für Adresse {}:'.format(pbd.addr))
+        print('Manifacturer ID: {}'.format(pbd.manufacturerID))
+        if len(pbd.units) < len(pbd.values):
+            for i in range(len(pbd.values)):
+                print('{} {}'.format(pbd.values[i], pbd.units[0]))
+        else:
+            for i in range(len(pbd.values)):
+                print('{} {}'.format(pbd.values[i], pbd.units[i]))
+
+        print('')
+    input("Drücke eine Taste um fortzufahren...")
 
 
 menu = ConsoleMenu("Acyclic Profibus Communication V0.1",
@@ -301,8 +330,11 @@ function_item1 = FunctionItem(
     "Wähle die IP Adresse des Proxy", menuSetIPAdress)
 function_item2 = FunctionItem(
     "Suche Endgeräte", menuFindClients)
+function_item3 = FunctionItem(
+    "Zeige vorhandene Daten", menuGetDeviceInformationOutput)
 
 menu.append_item(function_item0)
 menu.append_item(function_item1)
 menu.append_item(function_item2)
+menu.append_item(function_item3)
 menu.show()
