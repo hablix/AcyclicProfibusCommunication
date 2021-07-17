@@ -4,7 +4,7 @@ from consolemenu import *
 from consolemenu.items import *
 import re
 import time
-# from lxml import etree as ET
+#from lxml import etree as ET
 
 # Server
 ip = "141.76.82.170"
@@ -322,8 +322,10 @@ def menuGetDeviceInformationOutput():
     input("Drücke eine Taste um fortzufahren...")
 
 
-menu = ConsoleMenu("Acyclic Profibus Communication V0.1",
-                   "von Jim und Felix             IP Adresse: {}".format(ip))
+menu = ConsoleMenu("Azyklisches Lesen - Profibus Kommunikation",
+                   "von Hannes",
+                   "Serveradresse: {}".format(ip),
+                   "Serverport: {}".format(port))
 function_item0 = FunctionItem(
     "Automatischer Durchlauf", main)
 function_item1 = FunctionItem(
