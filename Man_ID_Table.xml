@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-stylesheet type="text/xsl" href="Man_ID_Table.xsl"?>
 <Man_ID_Table xmlns="http://www.profibus.com/IM/2003/11/Man_ID" xmlns:doc="http://www.profibus.com/Document" xmlns:prim="http://www.profibus.com/Common/2003/11/Primitives" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.profibus.com/IM/2003/11/Man_ID
 IM-Man_ID-v1.0.xsd">
-		<doc:DocumentInfo Version="61" ReleaseType="Version" ReleaseDate="2009-05-19">
+<doc:DocumentInfo Version="61" ReleaseType="Version" ReleaseDate="2009-05-19">
 		<prim:LastModified Tool="PROFIBUS I&amp;M Functions" User="PNO" Timestamp="2009-10-22T13:00:00+01:00"></prim:LastModified>
 		<doc:DocumentType>Table</doc:DocumentType>
 		<doc:DocumentTitle xml:lang="en">Manufacturer ID Table</doc:DocumentTitle>
@@ -11,9 +10,9 @@ IM-Man_ID-v1.0.xsd">
 		<doc:Author TC="4" TC_Name="System Integration" WG="6" WG_Name="XML@PROFIBUS"/>
 		<doc:Copyright>(C) Copyright PNO 2009 - All Rights Reserved</doc:Copyright>
 		<doc:Comment>This file contains the list of manufacturers/profiles within PNO. This XML document may be downloaded by any PROFIBUS or PROFINET engineering or service tools as long as its manufacturer is a member of the PROFIBUS International organization.</doc:Comment>
-	</doc:DocumentInfo>
+</doc:DocumentInfo>>
 
-  <Manufacturer ID="1">
+<Manufacturer ID="1">
   <ManufacturerInfo>
     <ManufacturerName>Acromag</ManufacturerName>
     <Info xml:lang="en" Tag="web_url" URI=""/>
